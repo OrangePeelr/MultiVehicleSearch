@@ -142,9 +142,9 @@ def test_vehicles_fit_listings_basic_length_orientation() -> None:
 
     result = vehicles_fit_listings(listings, vehicle_orderings)
 
-    # Expect one valid combination (the single listing)
+    # Expect one valid combination (the single listing with total cost)
     assert len(result) == 1
-    assert frozenset({"A"}) in result
+    assert (frozenset({"A"}), 10000) in result
 
 
 def test_vehicles_fit_listings_width_orientation_multiple_slots() -> None:
@@ -158,7 +158,7 @@ def test_vehicles_fit_listings_width_orientation_multiple_slots() -> None:
 
     # width=40 → 4 slots of length=30 → all vehicles fit
     assert len(result) == 1
-    assert frozenset({"A"}) in result
+    assert (frozenset({"A"}), 5000) in result
 
 
 def test_vehicles_fit_listings_multiple_listings_used() -> None:
@@ -171,14 +171,14 @@ def test_vehicles_fit_listings_multiple_listings_used() -> None:
 
     result = vehicles_fit_listings(listings, vehicle_orderings)
 
-    # Expect one combo that includes both listings
-    assert any({"A", "B"} == set(combo) for combo in result)
-    # Should only contain frozensets
-    assert all(isinstance(combo, frozenset) for combo in result)
+    # Expect one combo that includes both listings, with total cost 22000
+    assert any((frozenset({"A", "B"}), 22000) == combo for combo in result)
+    # Should only contain tuples of (frozenset, cost)
+    assert all(isinstance(combo, tuple) and isinstance(combo[0], frozenset) for combo in result)
 
 
 def test_find_listings_single_valid_location(monkeypatch: Any) -> None:
-    """Should return one location when vehicles fit exactly into one listing group."""
+    """Should return one location with its cheapest valid listing combination."""
 
     mock_locations = {
         "loc1": [
@@ -195,16 +195,20 @@ def test_find_listings_single_valid_location(monkeypatch: Any) -> None:
     with patch("findListings.load_locations", return_value=mock_locations):
         result = findListings(vehicle_query)
 
-    # Expect one result tuple: (location_id, [listings_used])
+    # Expect one result dict for the location
     assert isinstance(result, list)
     assert len(result) == 1
-    location_id, listings_used = result[0]
-    assert location_id == "loc1"
-    assert all(isinstance(s, frozenset) for s in listings_used)
+    entry = result[0]
+    assert entry["location_id"] == "loc1"
+    assert "listing_ids" in entry
+    assert "total_price_in_cents" in entry
+    assert isinstance(entry["listing_ids"], list)
+    assert all(isinstance(x, str) for x in entry["listing_ids"])
+    assert isinstance(entry["total_price_in_cents"], int)
 
 
 def test_find_listings_multiple_possible_combinations(monkeypatch: Any) -> None:
-    """Should return multiple valid combinations when several permutations fit."""
+    """Should return the cheapest valid combination when several listings fit."""
 
     mock_locations = {
         "loc1": [
@@ -220,14 +224,12 @@ def test_find_listings_multiple_possible_combinations(monkeypatch: Any) -> None:
     with patch("findListings.load_locations", return_value=mock_locations):
         result = findListings(vehicle_query)
 
-    # Because both listings A and B can fit, we should see both combinations
-    location_id, combos = result[0]
-    combo_sets = [set(c) for c in combos]
-
-    # Expect combinations using either A or B
-    assert {"A"} in combo_sets
-    assert {"B"} in combo_sets
-    assert len(combo_sets) >= 2
+    # Should return only the cheapest combination
+    assert len(result) == 1
+    entry = result[0]
+    assert entry["location_id"] == "loc1"
+    assert entry["listing_ids"] == ["A"]  # 'A' is cheaper than 'B'
+    assert entry["total_price_in_cents"] == 100
 
 
 def test_find_listings_no_fit_returns_empty(monkeypatch: Any) -> None:
@@ -246,8 +248,9 @@ def test_find_listings_no_fit_returns_empty(monkeypatch: Any) -> None:
     with patch("findListings.load_locations", return_value=mock_locations):
         result = findListings(vehicle_query)
 
-    # No listings should fit a 50-length vehicle
+    # No valid configurations
     assert result == []
+
 
 def test_find_listings_empty_vehicle_query(monkeypatch: Any) -> None:
     """Should return an empty list when vehicle_query is empty."""
@@ -269,9 +272,7 @@ def test_find_listings_empty_locations(monkeypatch: Any) -> None:
     """Should return an empty list when there are no locations."""
     mock_locations: dict[str, list[dict[str, Any]]] = {}
 
-    vehicle_query = [
-        {"length": 10, "quantity": 1}
-    ]
+    vehicle_query = [{"length": 10, "quantity": 1}]
 
     with patch("findListings.load_locations", return_value=mock_locations):
         result = findListings(vehicle_query)
@@ -288,9 +289,7 @@ def test_find_listings_vehicle_larger_than_all_slots(monkeypatch: Any) -> None:
         ]
     }
 
-    vehicle_query = [
-        {"length": 50, "quantity": 1}  # bigger than any available slot
-    ]
+    vehicle_query = [{"length": 50, "quantity": 1}]  # bigger than any available slot
 
     with patch("findListings.load_locations", return_value=mock_locations):
         result = findListings(vehicle_query)
@@ -299,43 +298,146 @@ def test_find_listings_vehicle_larger_than_all_slots(monkeypatch: Any) -> None:
 
 
 def test_find_listings_duplicate_vehicle_lengths(monkeypatch: Any) -> None:
-    """Should correctly handle multiple vehicles of the same length."""
+    """Should correctly handle multiple vehicles of the same length and pick cheapest listings."""
     mock_locations = {
         "loc1": [
-            {"id": "A", "length": 20, "width": 20, "price_in_cents": 1000},
+            {"id": "A", "length": 20, "width": 20, "price_in_cents": 800},
             {"id": "B", "length": 20, "width": 20, "price_in_cents": 1000},
         ]
     }
 
-    vehicle_query = [
-        {"length": 10, "quantity": 3},  # three identical vehicles
-    ]
+    vehicle_query = [{"length": 10, "quantity": 3}]  # three identical vehicles
 
     with patch("findListings.load_locations", return_value=mock_locations):
         result = findListings(vehicle_query)
 
-    # Expect at least one combination using both listings
-    assert len(result) > 0
-    location_id, combos = result[0]
-    combo_sets = [set(c) for c in combos]
-    assert any({"A", "B"} == s or {"A"} == s or {"B"} == s for s in combo_sets)
+    # Should return only cheapest listings combination
+    assert len(result) == 1
+    entry = result[0]
+    assert entry["location_id"] == "loc1"
+    assert entry["listing_ids"] == ["A"]
+    assert entry["total_price_in_cents"] == 800
 
 
 def test_find_listings_all_vehicles_fit_single_slot(monkeypatch: Any) -> None:
-    """All vehicles fit exactly into a single listing slot."""
+    """All vehicles fit exactly into a single listing slot; total cost reflects one listing."""
     mock_locations = {
         "loc1": [
             {"id": "A", "length": 30, "width": 30, "price_in_cents": 1500}
         ]
     }
 
-    vehicle_query = [
-        {"length": 10, "quantity": 3}  # exactly fits 30-length slot
-    ]
+    vehicle_query = [{"length": 10, "quantity": 3}]  # exactly fits 30-length slot
 
     with patch("findListings.load_locations", return_value=mock_locations):
         result = findListings(vehicle_query)
 
     assert len(result) == 1
-    location_id, combos = result[0]
-    assert combos[0] == frozenset({"A"})
+    entry = result[0]
+    assert entry["location_id"] == "loc1"
+    assert entry["listing_ids"] == ["A"]
+    assert entry["total_price_in_cents"] == 1500
+
+def test_find_listings_prefers_minimum_cost_combination(monkeypatch: Any) -> None:
+    """Should return the combination of listings with the lowest total cost."""
+    mock_locations = {
+        "loc1": [
+            {"id": "A", "length": 30, "width": 30, "price_in_cents": 5000},
+            {"id": "B", "length": 30, "width": 30, "price_in_cents": 10000},
+        ]
+    }
+
+    vehicle_query = [{"length": 10, "quantity": 3}]  # total length 30 fits in one slot
+
+    with patch("findListings.load_locations", return_value=mock_locations):
+        result = findListings(vehicle_query)
+
+    # Expect single cheapest listing (A)
+    assert len(result) == 1
+    combo = result[0]
+    assert combo["listing_ids"] == ["A"]
+    assert combo["total_price_in_cents"] == 5000
+
+
+def test_find_listings_multiple_combos_selects_lowest_total(monkeypatch: Any) -> None:
+    """Should choose a combination with the lowest summed cost when multiple sets fit."""
+    mock_locations = {
+        "loc1": [
+            {"id": "A", "length": 20, "width": 20, "price_in_cents": 8000},
+            {"id": "B", "length": 20, "width": 20, "price_in_cents": 3000},
+            {"id": "C", "length": 20, "width": 20, "price_in_cents": 4000},
+        ]
+    }
+
+    vehicle_query = [{"length": 15, "quantity": 2}]  # needs one listing of 20 or two of them
+
+    with patch("findListings.load_locations", return_value=mock_locations):
+        result = findListings(vehicle_query)
+
+    # The cheapest single listing that fits should win (B)
+    assert len(result) == 1
+    combo = result[0]
+    assert combo["listing_ids"] == ["B"]
+    assert combo["total_price_in_cents"] == 3000
+
+
+def test_find_listings_combines_multiple_listings_for_cheapest_fit(monkeypatch: Any) -> None:
+    """Should choose the cheapest valid multi-listing combination."""
+    mock_locations = {
+        "loc1": [
+            {"id": "A", "length": 15, "width": 10, "price_in_cents": 2000},
+            {"id": "B", "length": 15, "width": 10, "price_in_cents": 2000},
+            {"id": "C", "length": 30, "width": 10, "price_in_cents": 5000},
+        ]
+    }
+
+    vehicle_query = [{"length": 15, "quantity": 2}]  # total length 30 required
+
+    with patch("findListings.load_locations", return_value=mock_locations):
+        result = findListings(vehicle_query)
+
+    # Both A and B combined (4000) is cheaper than C (5000)
+    assert len(result) == 1
+    combo = result[0]
+    assert set(combo["listing_ids"]) == {"A", "B"}
+    assert combo["total_price_in_cents"] == 4000
+
+
+def test_find_listings_handles_identical_cost_ties(monkeypatch: Any) -> None:
+    """Should return any one of the tied cheapest combos if costs are identical."""
+    mock_locations = {
+        "loc1": [
+            {"id": "A", "length": 30, "width": 20, "price_in_cents": 5000},
+            {"id": "B", "length": 30, "width": 20, "price_in_cents": 5000},
+        ]
+    }
+
+    vehicle_query = [{"length": 10, "quantity": 3}]
+
+    with patch("findListings.load_locations", return_value=mock_locations):
+        result = findListings(vehicle_query)
+
+    assert len(result) == 1
+    combo = result[0]
+    assert combo["listing_ids"] in (["A"], ["B"])
+    assert combo["total_price_in_cents"] == 5000
+
+
+def test_find_listings_ignores_higher_cost_when_both_fit(monkeypatch: Any) -> None:
+    """If multiple listings fit individually, only return the cheaper one."""
+    mock_locations = {
+        "loc1": [
+            {"id": "cheap", "length": 40, "width": 10, "price_in_cents": 2000},
+            {"id": "expensive", "length": 40, "width": 10, "price_in_cents": 9000},
+        ]
+    }
+
+    vehicle_query = [{"length": 20, "quantity": 1}, {"length": 20, "quantity": 1}]
+
+    with patch("findListings.load_locations", return_value=mock_locations):
+        result = findListings(vehicle_query)
+
+    assert len(result) == 1
+    combo = result[0]
+    assert combo["listing_ids"] == ["cheap"]
+    assert combo["total_price_in_cents"] == 2000

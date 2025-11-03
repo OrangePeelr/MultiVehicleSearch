@@ -71,6 +71,7 @@ def vehicles_fit_listings(listings, vehicle_orderings):
                         location_slots.extend([(listing["id"], listing["width"])] * num_slots)
                 
                 for vehicle_order in vehicle_orderings:
+                #for vehicle_order in [vehicle_orderings[0]]:
                     slots = [slot[1] for slot in location_slots]
                     if _can_pack(vehicle_order, slots.copy()):
                         listings_used = frozenset(listing["id"] for listing in listings_subset)
@@ -97,4 +98,12 @@ def findListings(vehicle_query):
             locations_used.append((location_id, list(listings_used)))
 
     # todo: sort listings by cost
-    return locations_used
+    results = []
+    for location in locations_used:
+        min_combo = min(location[1], key = lambda x : x[1])
+        results.append({
+            "location_id": location[0],
+            "listing_ids": list(min_combo[0]),
+            "total_price_in_cents": min_combo[1]
+        })
+    return results # todo sort to ascending order
