@@ -19,6 +19,10 @@ def parse_vehicle_queries(vehicle_queries: list[VehicleQuery]) -> list[dict[str,
         parsed.append({"length" : query.length, "quantity" : query.quantity})
     return parsed
 
+@app.get("/")
+async def root():
+    return {"message": "Hello World"}
+
 @app.post("/")
 def get_items(vehicle_queries: list[VehicleQuery]) -> list[dict[str, str | list[str] | int]]:
     parsed_vehicle_queries = parse_vehicle_queries(vehicle_queries)
