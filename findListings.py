@@ -42,7 +42,6 @@ def vehicle_order_fit_slot(vehicle_order, location_slots):
             return
     return listings_used
 
-#def vehicles_fit_listings(listings, vehicle_orderings):
 def vehicles_fit_listings(listings, vehicles):
     listings_combinations = set()
 
@@ -71,9 +70,6 @@ def vehicles_fit_listings(listings, vehicles):
                         num_slots = listing["length"] // 10
                         location_slots.extend([(listing["id"], listing["width"])] * num_slots)
                 
-                #for vehicle_order in vehicle_orderings:
-                # for vehicle_order in [vehicle_orderings[0]]:
-                #for vehicle_order in [vehicle_orderings[0]]:
                 slots = [slot[1] for slot in location_slots]
                 if _can_pack(vehicles, slots.copy()):
                     listings_used = frozenset(listing["id"] for listing in listings_subset)
@@ -89,19 +85,15 @@ def findListings(vehicle_query):
     if not vehicles:
         return []
 
-    #vehicle_orderings = list(itertools.permutations(vehicles))
-
     locations_used = []
 
     for location_id, listings in listings_by_location.items():
-        # listings_used = vehicles_fit_listings(listings, vehicle_orderings)
         listings_used = vehicles_fit_listings(listings, vehicles)
         if listings_used:
             locations_used.append((location_id, list(listings_used)))
 
     results = []
     for location in locations_used:
-        # sorted_listings = sorted(location[1])
         min_combo = min(location[1], key = lambda x : x[1])
         results.append({
             "location_id": location[0],
