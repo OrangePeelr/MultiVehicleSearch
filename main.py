@@ -21,9 +21,6 @@ def parse_vehicle_queries(vehicle_queries: list[VehicleQuery]) -> list[dict[str,
 
 @app.post("/")
 def get_items(vehicle_queries: list[VehicleQuery]) -> list[dict[str, str | list[str] | int]]:
-    print("this is the query\n\n\n\n\n")
-    print(vehicle_queries)
     parsed_vehicle_queries = parse_vehicle_queries(vehicle_queries)
-    print(parsed_vehicle_queries)
     response = findListings(parsed_vehicle_queries)
     return response
