@@ -4,11 +4,13 @@ import tempfile
 from pathlib import Path
 from typing import Any, Dict, List
 import pytest
+from unittest.mock import patch
 
 from findListings import load_locations
 from findListings import parse_vehicle_query
 from findListings import vehicle_order_fit_slot
 from findListings import vehicles_fit_listings
+from findListings import findListings
 
 
 # Type alias for readability
@@ -173,3 +175,167 @@ def test_vehicles_fit_listings_multiple_listings_used() -> None:
     assert any({"A", "B"} == set(combo) for combo in result)
     # Should only contain frozensets
     assert all(isinstance(combo, frozenset) for combo in result)
+
+
+def test_find_listings_single_valid_location(monkeypatch: Any) -> None:
+    """Should return one location when vehicles fit exactly into one listing group."""
+
+    mock_locations = {
+        "loc1": [
+            {"id": "A", "length": 40, "width": 20, "price_in_cents": 1000},
+            {"id": "B", "length": 20, "width": 10, "price_in_cents": 500},
+        ]
+    }
+
+    vehicle_query = [
+        {"length": 10, "quantity": 1},
+        {"length": 20, "quantity": 1},
+    ]
+
+    with patch("findListings.load_locations", return_value=mock_locations):
+        result = findListings(vehicle_query)
+
+    # Expect one result tuple: (location_id, [listings_used])
+    assert isinstance(result, list)
+    assert len(result) == 1
+    location_id, listings_used = result[0]
+    assert location_id == "loc1"
+    assert all(isinstance(s, frozenset) for s in listings_used)
+
+
+def test_find_listings_multiple_possible_combinations(monkeypatch: Any) -> None:
+    """Should return multiple valid combinations when several permutations fit."""
+
+    mock_locations = {
+        "loc1": [
+            {"id": "A", "length": 20, "width": 20, "price_in_cents": 100},
+            {"id": "B", "length": 20, "width": 20, "price_in_cents": 200},
+        ]
+    }
+
+    vehicle_query = [
+        {"length": 10, "quantity": 2},  # total 20
+    ]
+
+    with patch("findListings.load_locations", return_value=mock_locations):
+        result = findListings(vehicle_query)
+
+    # Because both listings A and B can fit, we should see both combinations
+    location_id, combos = result[0]
+    combo_sets = [set(c) for c in combos]
+
+    # Expect combinations using either A or B
+    assert {"A"} in combo_sets
+    assert {"B"} in combo_sets
+    assert len(combo_sets) >= 2
+
+
+def test_find_listings_no_fit_returns_empty(monkeypatch: Any) -> None:
+    """Should return an empty list when no vehicles can fit any listing."""
+
+    mock_locations = {
+        "loc1": [
+            {"id": "A", "length": 5, "width": 5, "price_in_cents": 100},
+        ]
+    }
+
+    vehicle_query = [
+        {"length": 50, "quantity": 1},
+    ]
+
+    with patch("findListings.load_locations", return_value=mock_locations):
+        result = findListings(vehicle_query)
+
+    # No listings should fit a 50-length vehicle
+    assert result == []
+
+def test_find_listings_empty_vehicle_query(monkeypatch: Any) -> None:
+    """Should return an empty list when vehicle_query is empty."""
+    mock_locations = {
+        "loc1": [
+            {"id": "A", "length": 20, "width": 20, "price_in_cents": 1000}
+        ]
+    }
+
+    vehicle_query: list[dict[str, Any]] = []
+
+    with patch("findListings.load_locations", return_value=mock_locations):
+        result = findListings(vehicle_query)
+
+    assert result == []
+
+
+def test_find_listings_empty_locations(monkeypatch: Any) -> None:
+    """Should return an empty list when there are no locations."""
+    mock_locations: dict[str, list[dict[str, Any]]] = {}
+
+    vehicle_query = [
+        {"length": 10, "quantity": 1}
+    ]
+
+    with patch("findListings.load_locations", return_value=mock_locations):
+        result = findListings(vehicle_query)
+
+    assert result == []
+
+
+def test_find_listings_vehicle_larger_than_all_slots(monkeypatch: Any) -> None:
+    """Should return an empty list when vehicles are larger than any single listing slot."""
+    mock_locations = {
+        "loc1": [
+            {"id": "A", "length": 10, "width": 10, "price_in_cents": 1000},
+            {"id": "B", "length": 15, "width": 15, "price_in_cents": 1200},
+        ]
+    }
+
+    vehicle_query = [
+        {"length": 50, "quantity": 1}  # bigger than any available slot
+    ]
+
+    with patch("findListings.load_locations", return_value=mock_locations):
+        result = findListings(vehicle_query)
+
+    assert result == []
+
+
+def test_find_listings_duplicate_vehicle_lengths(monkeypatch: Any) -> None:
+    """Should correctly handle multiple vehicles of the same length."""
+    mock_locations = {
+        "loc1": [
+            {"id": "A", "length": 20, "width": 20, "price_in_cents": 1000},
+            {"id": "B", "length": 20, "width": 20, "price_in_cents": 1000},
+        ]
+    }
+
+    vehicle_query = [
+        {"length": 10, "quantity": 3},  # three identical vehicles
+    ]
+
+    with patch("findListings.load_locations", return_value=mock_locations):
+        result = findListings(vehicle_query)
+
+    # Expect at least one combination using both listings
+    assert len(result) > 0
+    location_id, combos = result[0]
+    combo_sets = [set(c) for c in combos]
+    assert any({"A", "B"} == s or {"A"} == s or {"B"} == s for s in combo_sets)
+
+
+def test_find_listings_all_vehicles_fit_single_slot(monkeypatch: Any) -> None:
+    """All vehicles fit exactly into a single listing slot."""
+    mock_locations = {
+        "loc1": [
+            {"id": "A", "length": 30, "width": 30, "price_in_cents": 1500}
+        ]
+    }
+
+    vehicle_query = [
+        {"length": 10, "quantity": 3}  # exactly fits 30-length slot
+    ]
+
+    with patch("findListings.load_locations", return_value=mock_locations):
+        result = findListings(vehicle_query)
+
+    assert len(result) == 1
+    location_id, combos = result[0]
+    assert combos[0] == frozenset({"A"})

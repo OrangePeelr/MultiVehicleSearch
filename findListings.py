@@ -44,73 +44,57 @@ def vehicle_order_fit_slot(vehicle_order, location_slots):
 
 def vehicles_fit_listings(listings, vehicle_orderings):
     listings_combinations = set()
+
+    def _can_pack(vehicle_order, slots):
+        slots = sorted(slots, reverse=True)
+        for vehicle in sorted(vehicle_order, reverse=True):
+            placed = False
+            for i in range(len(slots)):
+                if slots[i] >= vehicle:
+                    slots[i] -= vehicle
+                    placed = True
+                    break
+            if not placed:
+                return False
+        return True
+
     for orientation in ["width", "length"]:
-        location_slots = []
-        for listing in listings:
-            if orientation == "width":
-                num_slots = listing["width"] // 10
-                location_slots.extend([(listing["id"], listing["length"])] * num_slots)
-            elif orientation == "length":
-                num_slots = listing["length"] // 10
-                location_slots.extend([(listing["id"], listing["width"])] * num_slots)
-        
-        for vehicle_order in vehicle_orderings:
-            listings_used = vehicle_order_fit_slot(vehicle_order, location_slots.copy())
-            if listings_used:
-                listings_combinations.add(frozenset(listings_used))
+        for i in range(1, len(listings) + 1):
+            for listings_subset in itertools.combinations(listings, i):
+                location_slots = []
+                for listing in listings_subset:
+                    if orientation == "width":
+                        num_slots = listing["width"] // 10
+                        location_slots.extend([(listing["id"], listing["length"])] * num_slots)
+                    elif orientation == "length":
+                        num_slots = listing["length"] // 10
+                        location_slots.extend([(listing["id"], listing["width"])] * num_slots)
+                
+                for vehicle_order in vehicle_orderings:
+                    slots = [slot[1] for slot in location_slots]
+                    if _can_pack(vehicle_order, slots.copy()):
+                        listings_used = frozenset(listing["id"] for listing in listings_subset)
+                        listings_cost = sum(listing["price_in_cents"] for listing in listings_subset)
+                        listings_combinations.add((frozenset(listings_used), listings_cost))
+                        break
     return listings_combinations
 
 def findListings(vehicle_query):
-    listings = load_locations(listings_path)
-    
-    
-    # for location in locations:
-    #    location_list = []
-    #    for vehicle_order in vehicle_orders
-    #       if vehicles_fit_location(vehicle_order, location):
-    #           location_list.append(location, cost)
-    #
-    # def vehicles_fit_location(vehicle_order, location): -> listings, cost
-    #    remaining_space = dict(listing:(width, length)) # calculate by dividing length by 10 to get number of slots available, and then adding all the slots together to fit max # of cars
-    #    used_listings = []
-    #    cost = 0
-    #    for vehicle in vehicle_order:
-    #       vehicle_added = False
-    #       for listing in location:
-    #           if remaining_width[listing] > vehicle.length:
-    #               used_listings.append(listing)
-    #               vehicle_added = True
-    #               break to new vehicle
-    #           else:
-    #               continue to next listing
-    #       if vehicle_added == False:
-    #           break to other orientation below
-    #
-    #    if all cars don't fit, run for other orientation
-    #    
-    
+    listings_by_location = load_locations(listings_path)
 
+    vehicles = parse_vehicle_query(vehicle_query)
 
-    # old code:
-    #condensed_queries_list = []
-    #for query in vehicle_queries:
-    #    for i in range(query["quantity"]):
-    #        condensed_queries_list.append()
+    if not vehicles:
+        return []
 
-    #permutations = list(itertools.permutations(vehicle_queries))
-    #print(permutations)
+    vehicle_orderings = list(itertools.permutations(vehicles))
 
-'''
-listing_quant: dict[str, int] = {}
-for i, listing in enumerate(listings):
-    cur_id = listing_quant.get(listing['location_id'])
-    if cur_id is None:
-        listing_quant[listing['location_id']] = 1
-    else:
-        listing_quant[listing['location_id']] += 1
+    locations_used = []
 
-print(len(listings))
-print(listings[0])
+    for location_id, listings in listings_by_location.items():
+        listings_used = vehicles_fit_listings(listings, vehicle_orderings)
+        if listings_used:
+            locations_used.append((location_id, list(listings_used)))
 
-print(sorted(listing_quant.items(), key=lambda item: item[1]))
-'''
+    # todo: sort listings by cost
+    return locations_used
