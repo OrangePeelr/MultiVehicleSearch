@@ -28,6 +28,37 @@ def parse_vehicle_query(vehicle_query):
         vehicles.extend([query_item["length"] for i in range(quantity)])
     return vehicles
 
+def vehicle_order_fit_slot(vehicle_order, location_slots):
+    listings_used = set()
+    for vehicle_len in vehicle_order:
+        updated = False
+        for i, slot in enumerate(location_slots):
+            if vehicle_len <= slot[1]:
+                location_slots[i] = (slot[0], slot[1] - vehicle_len)
+                updated = True
+                listings_used.add(slot[0])
+                break
+        if not updated:
+            return
+    return listings_used
+
+def vehicles_fit_listings(listings, vehicle_orderings):
+    listings_combinations = set()
+    for orientation in ["width", "length"]:
+        location_slots = []
+        for listing in listings:
+            if orientation == "width":
+                num_slots = listing["width"] // 10
+                location_slots.extend([(listing["id"], listing["length"])] * num_slots)
+            elif orientation == "length":
+                num_slots = listing["length"] // 10
+                location_slots.extend([(listing["id"], listing["width"])] * num_slots)
+        
+        for vehicle_order in vehicle_orderings:
+            listings_used = vehicle_order_fit_slot(vehicle_order, location_slots.copy())
+            if listings_used:
+                listings_combinations.add(frozenset(listings_used))
+    return listings_combinations
 
 def findListings(vehicle_query):
     listings = load_locations(listings_path)
