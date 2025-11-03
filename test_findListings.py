@@ -138,9 +138,9 @@ def test_vehicles_fit_listings_basic_length_orientation() -> None:
     listings = [
         {"id": "A", "length": 40, "width": 20, "price_in_cents": 10000},
     ]
-    vehicle_orderings = [(10, 10, 20)]  # total 40 fits exactly under length orientation
+    vehicles = [10, 10, 20]  # total 40 fits exactly under length orientation
 
-    result = vehicles_fit_listings(listings, vehicle_orderings)
+    result = vehicles_fit_listings(listings, vehicles)
 
     # Expect one valid combination (the single listing with total cost)
     assert len(result) == 1
@@ -152,9 +152,9 @@ def test_vehicles_fit_listings_width_orientation_multiple_slots() -> None:
     listings = [
         {"id": "A", "length": 30, "width": 40, "price_in_cents": 5000},
     ]
-    vehicle_orderings = [(10, 10, 10, 10)]  # 4 vehicles of length 10
+    vehicles = [10, 10, 10, 10]  # 4 vehicles of length 10
 
-    result = vehicles_fit_listings(listings, vehicle_orderings)
+    result = vehicles_fit_listings(listings, vehicles)
 
     # width=40 → 4 slots of length=30 → all vehicles fit
     assert len(result) == 1
@@ -167,14 +167,16 @@ def test_vehicles_fit_listings_multiple_listings_used() -> None:
         {"id": "A", "length": 20, "width": 20, "price_in_cents": 10000},
         {"id": "B", "length": 20, "width": 20, "price_in_cents": 12000},
     ]
-    vehicle_orderings = [(15, 15, 10)]  # requires both A and B
+    vehicles = [15, 15, 10]  # requires both A and B
 
-    result = vehicles_fit_listings(listings, vehicle_orderings)
+    result = vehicles_fit_listings(listings, vehicles)
 
     # Expect one combo that includes both listings, with total cost 22000
-    assert any((frozenset({"A", "B"}), 22000) == combo for combo in result)
+    assert any(combo == (frozenset({"A", "B"}), 22000) for combo in result)
+
     # Should only contain tuples of (frozenset, cost)
     assert all(isinstance(combo, tuple) and isinstance(combo[0], frozenset) for combo in result)
+
 
 
 def test_find_listings_single_valid_location(monkeypatch: Any) -> None:
