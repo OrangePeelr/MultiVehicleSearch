@@ -3,22 +3,29 @@ import itertools
 
 listings_path = "listings.json"
 
-def load_locations(listings_path):
-        with open(listings_path) as f:
-            listings = json.load(f)
-            
-            locations = dict()
-            for listing in listings:
-                location_id = listing['location_id']
-                location_info = {'id': listing['id'], 'length': listing['length'], 'width': listing['width'], 'price_in_cents': listing['price_in_cents']}
-                locations.setdefault(location_id, []).append(location_info)
-            return listings
+
+def load_locations(listings_path=listings_path):
+    with open(listings_path) as f:
+        listings = json.load(f)
+
+        locations = dict()
+        for listing in listings:
+            location_id = listing["location_id"]
+            location_info = {
+                "id": listing["id"],
+                "length": listing["length"],
+                "width": listing["width"],
+                "price_in_cents": listing["price_in_cents"],
+            }
+            locations.setdefault(location_id, []).append(location_info)
+        return locations
+
 
 def parse_vehicle_query(vehicle_query):
     vehicles = []
     for query_item in vehicle_query:
-        quantity = query_item['quantity']
-        vehicles.extend([query_item['length'] for i in range(quantity)])
+        quantity = query_item["quantity"]
+        vehicles.extend([query_item["length"] for i in range(quantity)])
     return vehicles
 
 
